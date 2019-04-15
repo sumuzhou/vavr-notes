@@ -13,6 +13,6 @@ vavr流水账
 Vavr一次性满足了我们所有的愿望，比如提供了Tuple来封装多个值，提供了try和Either来处理异常。本文的部分内容摘自[Vavr的官方文档](http://www.vavr.io/vavr-docs)，想查阅第一手资料请移步官方文档。
 
 Vavr的整体结构如下图所示：
-![Vavr整体结构]( "Vavr整体结构")
+![Vavr整体结构](https://github.com/sumuzhou/vavr-notes/blob/master/vavr-overview.png "Vavr整体结构")
 
 后面我会按照Tuple、Function、Value和Traversable四个章节依次讲解Vavr的使用。
