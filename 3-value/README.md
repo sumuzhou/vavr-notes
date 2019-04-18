@@ -262,3 +262,102 @@ public static <T> T val(Supplier<? extends T> supplier, Class<T> type) {
 }
 ```
 原理并不复杂，还是先创建Lazy对象，然后创建代理，代理做的事情就是将方法调用传递给lazy.get，即实际的懒加载对象。
+
+## Validation
+顾名思义Validation就是用来做验证的。Validation和Either很类似，有两个实现类Valid和Invalid，基本等同于Either的Right和Left；Validation提供的map和mapError方法，等同于Either的map和mapLeft方法。区别在于，Validation的目的是用于验证，当验证时，我们肯定希望一次性验证多项属性，而不是当某属性出错时就返回结果。为此，Validation提供了combine和ap方法，来串联单项属性的验证结果，如下代码：
+```java
+class Person {
+
+    public final String name;
+    public final int age;
+
+    public Person(String name, int age) {
+        this.name = name;
+        this.age = age;
+    }
+
+    @Override
+    public String toString() {
+        return "Person(" + name + ", " + age + ")";
+    }
+
+}
+
+class PersonValidator {
+
+    private static final String VALID_NAME_CHARS = "[a-zA-Z ]";
+    private static final int MIN_AGE = 0;
+
+    public Validation<Seq<String>, Person> validatePerson(String name, int age) {
+        return Validation.combine(validateName(name), validateAge(age)).ap(Person::new);
+    }
+
+    private Validation<String, String> validateName(String name) {
+        return CharSeq.of(name).replaceAll(VALID_NAME_CHARS, "").transform(seq -> seq.isEmpty()
+                ? Validation.valid(name)
+                : Validation.invalid("Name contains invalid characters: '"
+                + seq.distinct().sorted() + "'"));
+    }
+
+    private Validation<String, Integer> validateAge(int age) {
+        return age < MIN_AGE
+                ? Validation.invalid("Age must be at least " + MIN_AGE)
+                : Validation.valid(age);
+    }
+
+}
+
+// Validation
+PersonValidator personValidator = new PersonValidator();
+// Valid(Person(John Doe, 30))
+Validation<Seq<String>, Person> valid = personValidator.validatePerson("John Doe", 30);
+// Invalid(List(Name contains invalid characters: '!4?', Age must be greater than 0))
+Validation<Seq<String>, Person> invalid = personValidator.validatePerson("John? Doe!4", -1);
+// Invalid(List(Age must be at least 0))
+Validation<Seq<String>, Person> alsoInvalid = personValidator.validatePerson("John Doe", -1);
+```
+可以看到，我们通过validateName和validateAge实现了单项属性的验证，然后通过combine和ap把验证结果合并起来；当所有属性验证通过时返回创建对象，当存在属性验证失败时返回所有验证失败的内容。看下combine和ap的源码是如何实现的：
+```java
+static <E, T1, T2> Builder<E, T1, T2> combine(Validation<E, T1> validation1, Validation<E, T2> validation2) {
+    Objects.requireNonNull(validation1, "validation1 is null");
+    Objects.requireNonNull(validation2, "validation2 is null");
+    return new Builder<>(validation1, validation2);
+}
+
+final class Builder<E, T1, T2> {
+    // ...
+    private Builder(Validation<E, T1> v1, Validation<E, T2> v2) {
+        this.v1 = v1;
+        this.v2 = v2;
+    }
+
+    public <R> Validation<Seq<E>, R> ap(Function2<T1, T2, R> f) {
+        return v2.ap(v1.ap(Validation.valid(f.curried())));
+    }
+    // ...
+}
+
+default <U> Validation<Seq<E>, U> ap(Validation<Seq<E>, ? extends Function<? super T, ? extends U>> validation) {
+    Objects.requireNonNull(validation, "validation is null");
+    if (isValid()) {
+        if (validation.isValid()) {
+            final Function<? super T, ? extends U> f = validation.get();
+            final U u = f.apply(this.get());
+            return valid(u);
+        } else {
+            final Seq<E> errors = validation.getError();
+            return invalid(errors);
+        }
+    } else {
+        if (validation.isValid()) {
+            final E error = this.getError();
+            return invalid(List.of(error));
+        } else {
+            final Seq<E> errors = validation.getError();
+            final E error = this.getError();
+            return invalid(errors.append(error));
+        }
+    }
+}
+```
+combine并不神奇，只是创建一个Builder；Builder的ap方法，将传入函数柯里化，并包装在Valid中，然后倒序（也就是v2 -> v1）调用被combine的Validation的ap方法。回忆一下，柯里化是将多参数的函数转变为多个单参数函数的串联。再看下Validation的ap方法，对两者的状态做判断，只要有一个是Invalid，最终都是Invalid；多个Invalid通过List的append方法合并起来。
