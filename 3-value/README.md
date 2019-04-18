@@ -145,6 +145,9 @@ public <R> Try<R> of(CheckedFunction1<? super T1, ? extends R> f) {
 
 Try更强大的功能是recover，可以根据指定的错误类型得到不同的结果，结合Vavr提供的Case Match能力，十分强大：
 ```java
+import static io.vavr.API.*;        // $, Case, Match
+import static io.vavr.Predicates.*; // instanceOf
+
 String result = Try.of((CheckedFunction0<String>)() -> { throw new IllegalArgumentException("参数错了"); })
     .recover(x -> Match(x).of(
         Case($(instanceOf(IllegalArgumentException.class)), t -> "发生错误：" + t.getMessage()),
@@ -164,3 +167,98 @@ default Try<T> recover(Function<? super Throwable, ? extends T> f) {
 ```
 
 ## Either
+Either表示可能存在两种情况，但最终是其中一种情况。Either是一个接口，有两个实现类Left和Right。一般而言，Either用于表示可能返回的结果或者可能出现的错误，和Try有些类似；约定俗成的，Left被认为是出现了错误，Right被认为是正确的结果。所以Try提供了toEither方法：
+```java
+default Either<Throwable, T> toEither() {
+    if (isFailure()) {
+        return Either.left(getCause());
+    } else {
+        return Either.right(get());
+    }
+}
+```
+从上述代码可看到，Either没有提供of方法，取而代之是left和right方法。
+
+也因为约定俗成，Either的map方法只对Right生效。什么意思呢？比如如下代码：
+```java
+// Left("Error")
+Either<String,Integer> left = Either.<String, Integer>left("Error").map(i -> i * 2);
+// Right(2)
+Either<String,Integer> right = Either.<String, Integer>right(1).map(i -> i * 2);
+```
+left经过map后并没有发生变化，反观right是起了作用。看下源码：
+```java
+@SuppressWarnings("unchecked")
+@Override
+default <U> Either<L, U> map(Function<? super R, ? extends U> mapper) {
+    Objects.requireNonNull(mapper, "mapper is null");
+    if (isRight()) {
+        return Either.right(mapper.apply(get()));
+    } else {
+        return (Either<L, U>) this;
+    }
+}
+```
+很明显，显式判断了isRight，否则是不变的。那如果要处理Left该怎么办呢？使用mapLeft方法即可：
+```java
+@SuppressWarnings("unchecked")
+default <U> Either<U, R> mapLeft(Function<? super L, ? extends U> leftMapper) {
+    Objects.requireNonNull(leftMapper, "leftMapper is null");
+    if (isLeft()) {
+        return Either.left(leftMapper.apply(getLeft()));
+    } else {
+        return (Either<U, R>) this;
+    }
+}
+```
+
+## Lazy
+顾名思义，Lazy就是懒加载的对象，封装了计算逻辑，第一次使用时才进行计算，后续使用保存的计算结果。常见Lazy使用of工厂方法，提供一个Supplier：
+```java
+Lazy<Double> lazy = Lazy.of(Math::random);
+lazy.isEvaluated(); // = false
+lazy.get();         // = 0.123 (random generated)
+lazy.isEvaluated(); // = true
+lazy.get();         // = 0.123 (memoized)
+```
+Lazy和Supplier很类似（其实Lazy继承了Supplier接口），区别是Lazy会保存计算结果。但是保存就有些小技巧在里面了，请看源码：
+```java
+private transient volatile Supplier<? extends T> supplier;
+private T value;
+
+@Override
+public T get() {
+    return (supplier == null) ? value : computeValue();
+}
+
+private synchronized T computeValue() {
+    final Supplier<? extends T> s = supplier;
+    if (s != null) {
+        value = s.get();
+        supplier = null;
+    }
+    return value;
+}
+```
+这是一个很经典的Double-Checked Locking问题，关键点在于supplier的volatile关键字，在supplier的读写之间建立了happens-before的关系，避免重排带来的问题。头一次的supplier = null写操作和后一次的final Supplier<? extends T> s = supplier读操作之间建立了happens-before的关系，后续读取supplier的时候，JVM的内存模型确保了头一次的写入内容是可见的；也就是说，如果supplier是null，那么value的值一定是经过计算的。这也就是value不需要标记为volatile的原因。更详细的解释可参考作者在[源码中给出的链接](https://www.cs.umd.edu/~pugh/java/memoryModel/jsr-133-faq.html#volatile)。
+
+回到Lazy本身，我们创建的Lazy是封装类型，那能否创建实际类型的懒加载值呢？答案是可以的，通过代理来创建：
+```java
+CharSequence chars = Lazy.val(() -> "Yay!", CharSequence.class);
+```
+看下源码的实现原理：
+```java
+@GwtIncompatible("reflection is not supported")
+@SuppressWarnings("unchecked")
+public static <T> T val(Supplier<? extends T> supplier, Class<T> type) {
+    Objects.requireNonNull(supplier, "supplier is null");
+    Objects.requireNonNull(type, "type is null");
+    if (!type.isInterface()) {
+        throw new IllegalArgumentException("type has to be an interface");
+    }
+    final Lazy<T> lazy = Lazy.of(supplier);
+    final InvocationHandler handler = (proxy, method, args) -> method.invoke(lazy.get(), args);
+    return (T) Proxy.newProxyInstance(type.getClassLoader(), new Class<?>[] { type }, handler);
+}
+```
+原理并不复杂，还是先创建Lazy对象，然后创建代理，代理做的事情就是将方法调用传递给lazy.get，即实际的懒加载对象。
