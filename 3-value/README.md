@@ -361,3 +361,223 @@ default <U> Validation<Seq<E>, U> ap(Validation<Seq<E>, ? extends Function<? sup
 }
 ```
 combine并不神奇，只是创建一个Builder；Builder的ap方法，将传入函数柯里化，并包装在Valid中，然后倒序（也就是v2 -> v1）调用被combine的Validation的ap方法。回忆一下，柯里化是将多参数的函数转变为多个单参数函数的串联。再看下Validation的ap方法，对两者的状态做判断，只要有一个是Invalid，最终都是Invalid；多个Invalid通过List的append方法合并起来。
+
+## Match
+Scala提供了强大的类型匹配能力，非常好用，比如：
+```scala
+val s = i match {
+  case 1 => "one"
+  case 2 => "two"
+  case _ => "?"
+}
+```
+除了基础的匹配，Scala还有以下能力：
+- 命名参数：case i: Int ⇒ "Int " + i
+- 对象分解：case Some(i) ⇒ i
+- 条件判断：case Some(i) if i > 0 ⇒ "positive " + i
+- 多条件判断：case "-h" | "--help" ⇒ displayHelp
+- 编译时可检查穷举性（*没有尝试过，请自行判断正误*）
+
+Vavr提供了类似的类型匹配能力，基础的匹配用Vavr实现如下：
+```java
+import static io.vavr.API.*;
+import static io.vavr.Predicates.*;
+import static io.vavr.Patterns.*;
+
+String s = Match(i).of(
+    Case($(1), "one"),
+    Case($(2), "two"),
+    Case($(), "?")
+);
+```
+注意上述的静态引用，使用Vavr的类型匹配时一般都会用到。看下源码是如何实现的：
+```java
+// API.Match
+public static <T> Match<T> Match(T value) {
+    return new Match<>(value);
+}
+```
+静态方法Match很简单，就是创建一个Match对象。注意方法名是大写开头，不符合驼峰原则，这是因为case是Java的关键字，所以后续的静态方法Case就用了大写开头；为保持风格一致，这里的Match也用大写开头。
+```java
+public static final class Match<T> {
+
+    private final T value;
+
+    private Match(T value) {
+        this.value = value;
+    }
+
+    public final <R> R of(Case<? extends T, ? extends R>... cases) {
+        Objects.requireNonNull(cases, "cases is null");
+        for (Case<? extends T, ? extends R> _case : cases) {
+            final Case<T, R> __case = (Case<T, R>) _case;
+            if (__case.isDefinedAt(value)) {
+                return __case.apply(value);
+            }
+        }
+        throw new MatchError(value);
+    }
+    // ...
+}
+```
+of方法接受多个Case对象，对每个Case对象，判断是否接受值；如果能，则用Case的apply方法处理；如果到最后还不能处理，则抛出异常。Case类的方法看着是不是非常眼熟？对的，Case类就是一个Partial Function：
+```java
+public interface Case<T, R> extends PartialFunction<T, R> {
+}
+```
+那么，Case($(1), "one")这段代码做了什么呢？
+```java
+public static <T, R> Case<T, R> Case(Pattern0<T> pattern, R retVal) {
+    Objects.requireNonNull(pattern, "pattern is null");
+    return new Case0<>(pattern, ignored -> retVal);
+}
+
+public static <T> Pattern0<T> $(T prototype) {
+    return new Pattern0<T>() {
+        @Override
+        public T apply(T obj) {
+            return obj;
+        }
+
+        @Override
+        public boolean isDefinedAt(T obj) {
+            return Objects.equals(obj, prototype);
+        }
+    };
+}
+```
+Case方法接受一个Pattern0和返回值，并创建一个Case0类。$方法（对没错，$是一个方法的名称）返回一个Pattern0。再来看下Pattern0和Case0：
+```java
+public static final class Case0<T, R> implements Case<T, R> {
+
+    private final Pattern0<T> pattern;
+    private final Function<? super T, ? extends R> f;
+
+    private Case0(Pattern0<T> pattern, Function<? super T, ? extends R> f) {
+        this.pattern = pattern;
+        this.f = f;
+    }
+
+    @Override
+    public R apply(T obj) {
+        return f.apply(pattern.apply(obj));
+    }
+
+    @Override
+    public boolean isDefinedAt(T obj) {
+        return pattern.isDefinedAt(obj);
+    }
+}
+
+public interface Pattern<T, R> extends PartialFunction<T, R> {
+}
+
+public static abstract class Pattern0<T> implements Pattern<T, T> {
+  // 。。。
+}
+```
+Case0和Pattern0都是Partial Function，所以两者都有isDefinedAt和apply方法，Case0在Pattern0之上封装了一层。回到最初的Match - Case语句，假设i为1，of循环运行到第一个Case时，判断$(1)创建的Pattern，isDefinedAt通过，调用apply方法，也就是返回1本身；然后调用Case的apply方法，也就是ignored -> retVal，所以最后返回"one"。
+
+除了基础匹配，Vavr也提供了类似Scala的匹配能力。
+
+**命名参数**
+```java
+Number plusOne = Match(obj).of(
+    Case($(instanceOf(Integer.class)), i -> i + 1),
+    Case($(instanceOf(Double.class)), d -> d + 1),
+    Case($(), o -> { throw new NumberFormatException(); })
+);
+```
+**对象分解**
+```java
+Match(option).of(
+      Case($Some($(1)), i -> "Int " + i),
+      Case($Some($()), "defined"),
+      Case($None(), "empty")
+);
+```
+很神奇，来看下源码怎么实现的：
+```java
+public static <T, _1 extends T> Pattern1<Option.Some<T>, _1> $Some(Pattern<_1, ?> p1) {
+    return Pattern1.of(Option.Some.class, p1, io.vavr.$::Some);
+}
+```
+$Some方法通过of方法创建了一个Pattern1，看下Pattern1的代码：
+```java
+public static abstract class Pattern1<T, T1> implements Pattern<T, T1> {
+
+    public static <T, T1 extends U1, U1> Pattern1<T, T1> of(Class<? super T> type, Pattern<T1, ?> p1, Function<T, Tuple1<U1>> unapply) {
+        return new Pattern1<T, T1>() {
+            @SuppressWarnings("unchecked")
+            @Override
+            public T1 apply(T obj) {
+                return (T1) unapply.apply(obj)._1;
+            }
+
+            @SuppressWarnings("unchecked")
+            @Override
+            public boolean isDefinedAt(T obj) {
+                if (obj == null || !type.isAssignableFrom(obj.getClass())) {
+                    return false;
+                } else {
+                    final Tuple1<U1> u = unapply.apply(obj);
+                    return
+                            ((Pattern<U1, ?>) p1).isDefinedAt(u._1);
+                }
+            }
+        };
+    }
+}
+```
+关键点在于unapply，用途是从数据结构中提取出值，后续流程就基本类似了。所以$Some的unapply方法用的是什么呢？是io.vavr.$::Some，对别看错了，$是一个类的名字。看下这段代码：
+```java
+@Unapply
+static <T> Tuple1<T> Some(Option.Some<T> some) { return Tuple.of(some.get()); }
+```
+很简单吧，就是从Some中拿出数据封装成Tuple1。注意@Patterns和@Unapply注解，根据作者的描述，我们也是可以自定义分解方法的，只需要在类定义加上@Patterns注解，在方法加上@Unapply注解，然后会通过annotation processor来生成对应代码。未进行尝试，有兴趣的同学可自行尝试。
+
+对象分解的匹配表达式可以指定多层，但分解出来的对象限定在第一层，什么意思，请看如下代码：
+```java
+Match(_try).of(
+    Case($Success($Tuple2($("a"), $())), tuple2 -> ...),
+    Case($Failure($(instanceOf(Error.class))), error -> ...)
+);
+```
+上述代码的Success虽然表达式内部的Tuple2，但分解出来的对象还是tuple2，而不是内部的"a"或者其它。
+
+**条件判断**
+```java
+Match(option).of(
+      Case($Some($(is(1))), j -> "positive " + j),
+      Case($(), "?")
+  );
+```
+Vavr只提供了is判断条件，想要模拟Scala的case Some(i) if i > 0条件判断，需要自定义判断条件：
+```java
+public static <T> Predicate<T> gt(Comparable<? super T> value) {
+    return obj -> value.compareTo(obj) < 0;
+}
+
+Match(i).of(
+      Case($Some($(gt(1))), j -> "positive " + j),
+      Case($(), "?")
+  );
+```
+**多条件判断**
+```java
+Match(arg).of(
+      Case($(isIn("-h", "--help")), displayHelp),
+      Case($(), "Invalid arguments")
+  );
+```
+**避免MatchError**
+因为Java并没有对类型匹配提供原生的支持，所以不能在编译时检查穷举性，不注意的话可能由于Case没有全覆盖导致抛出MatchError。解决办法是使用option方法代替of方法：
+```java
+Option<String> s = Match(i).option(
+    Case($(0), "zero")
+);
+```
+这样在没有匹配到时，返回结果是None。
+
+## Future && Promise
+Vavr也提供了Future和Promise类，用于异步编程。没有深入研究，还未发现其比CompletableFuture的优势。
