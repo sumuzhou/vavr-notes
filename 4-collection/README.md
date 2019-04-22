@@ -46,9 +46,9 @@ List<Integer> list1 = List.of(1, 2, 3);
 List<Integer> list2 = list1.tail().prepend(0);
 ```
 形成的结果如图所示：
-![list1结构](https://github.com/sumuzhou/vavr-notes/blob/master/vavr-overview.png "list1结构")
+![list1结构](https://github.com/sumuzhou/vavr-notes/blob/master/4-collection/list1.png "list1结构")
 
-![list2结构](https://github.com/sumuzhou/vavr-notes/blob/master/vavr-overview.png "list2结构")
+![list2结构](https://github.com/sumuzhou/vavr-notes/blob/master/4-collection/list2.png "list2结构")
 
 链表最后端的元素是Nil，一个特殊的类。可以看到，虽然list2调用了list1的tail和prepend方法，但是list1的数据并没有变化。list1和list2形成了一个更大的数据结构，而它们各自都是这个数据结构的一个局部视图（头元素决定入口）。
 
@@ -103,10 +103,10 @@ Queue<Integer> queue = Queue.of(1, 2, 3)
                             .enqueue(5);
 ```
 得到的数据结构如图所示：
-![queue1结构](https://github.com/sumuzhou/vavr-notes/blob/master/vavr-overview.png "queue1结构")
+![queue1结构](https://github.com/sumuzhou/vavr-notes/blob/master/4-collection/queue1.png "queue1结构")
 
 出队前三个元素后，数据结构如图所示：
-![queue2结构](https://github.com/sumuzhou/vavr-notes/blob/master/vavr-overview.png "queue2结构")
+![queue2结构](https://github.com/sumuzhou/vavr-notes/blob/master/4-collection/queue2.png "queue2结构")
 
 队列一般用法如下：
 ```java
@@ -180,20 +180,20 @@ public Queue<T> tail() {
 // = TreeSet(1, 2, 3, 4, 6, 7, 8)
 SortedSet<Integer> xs = TreeSet.of(6, 1, 3, 2, 4, 7, 8);
 ```
-![tree1结构](https://github.com/sumuzhou/vavr-notes/blob/master/vavr-overview.png "tree1结构")
+![tree1结构](https://github.com/sumuzhou/vavr-notes/blob/master/4-collection/binarytree1.png "tree1结构")
 
 增加元素是一个有趣的操作，因为是函数式有序集，需要保留原有内部结构，所以增加元素会添加一条从新增节点到根节点的路径，其它保持不变：
 ```java
 // = TreeSet(1, 2, 3, 4, 5, 6, 7, 8)
 SortedSet<Integer> ys = xs.add(5);
 ```
-![tree2结构](https://github.com/sumuzhou/vavr-notes/blob/master/vavr-overview.png "tree2结构")
+![tree2结构](https://github.com/sumuzhou/vavr-notes/blob/master/4-collection/binarytree2.png "tree2结构")
 
 删除元素比增加更为复杂，另外树的左右深度需要保持基本一致水平。详细的理论请移步[Red/Black Tree](https://en.wikipedia.org/wiki/Red%E2%80%93black_tree)和[Purely Functional Data Structures](https://www.cs.cmu.edu/~rwh/theses/okasaki.pdf)。
 
 ## Overview
 Vavr提供了Seq、Set和Map接口以及多种实现，通过多种fluent方法减少了代码量。Seq接口及实现如图：
-![seq结构](https://github.com/sumuzhou/vavr-notes/blob/master/vavr-overview.png "seq结构")
+![seq结构](https://github.com/sumuzhou/vavr-notes/blob/master/4-collection/collections-seq.png "seq结构")
 
 比如组装字符串的方法，之前的方法可能是：
 ```java
@@ -245,7 +245,7 @@ Vector        | const<sup>eff</sup> | const<sup>eff</sup> | const<sup>eff</sup> 
 - linear — 线性时间
 
 Set和Map的接口及实现如图：
-![set&map结构](https://github.com/sumuzhou/vavr-notes/blob/master/vavr-overview.png "set&map结构")
+![set&map结构](https://github.com/sumuzhou/vavr-notes/blob/master/4-collection/collections-set-map.png "set&map结构")
 
 Set和Map原理上并没有真正的区别，无非Set目标是值，Map目标是键值对。Vavr的HashMap实现基于[Hash Array Mapped Trie (HAMT)](http://lampwww.epfl.ch/papers/idealhashtrees.pdf)。Map并没有使用特殊的Entry类，而是直接用了Tuple2，极大方便数据结构之间交互：
 ```java
