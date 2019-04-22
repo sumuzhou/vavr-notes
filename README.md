@@ -13,4 +13,4 @@ Vavr一次性满足了我们所有的愿望，比如提供了Tuple来封装多�
 Vavr的整体结构如下图所示：
 ![Vavr整体结构](https://github.com/sumuzhou/vavr-notes/blob/master/vavr-overview.png "Vavr整体结构")
 
-后面我会按照Tuple、Function、Value和Traversable四个章节依次讲解Vavr的使用。
+后面我会按照Tuple、Function、Value和Collection四个章节依次讲解Vavr的使用。
