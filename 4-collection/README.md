@@ -46,6 +46,7 @@ List<Integer> list1 = List.of(1, 2, 3);
 List<Integer> list2 = list1.tail().prepend(0);
 ```
 形成的结果如图所示：
+
 ![list1结构](https://github.com/sumuzhou/vavr-notes/blob/master/4-collection/list1.png "list1结构")
 
 ![list2结构](https://github.com/sumuzhou/vavr-notes/blob/master/4-collection/list2.png "list2结构")
@@ -103,9 +104,11 @@ Queue<Integer> queue = Queue.of(1, 2, 3)
                             .enqueue(5);
 ```
 得到的数据结构如图所示：
+
 ![queue1结构](https://github.com/sumuzhou/vavr-notes/blob/master/4-collection/queue1.png "queue1结构")
 
 出队前三个元素后，数据结构如图所示：
+
 ![queue2结构](https://github.com/sumuzhou/vavr-notes/blob/master/4-collection/queue2.png "queue2结构")
 
 队列一般用法如下：
@@ -225,7 +228,7 @@ static String join(String... words) {
 ```
 Seq各实现类的时间复杂度如下：
 
-|               head()              | tail()              | get(int)            | update(int, T)      | prepend(T)          | append(T)
+|             | head()              | tail()              | get(int)            | update(int, T)      | prepend(T)          | append(T)
 ------------- | ------------------- | ------------------- | ------------------- | ------------------- | ------------------- | -------------------
 Array         | const               | linear              | const               | const               | linear              | linear              
 CharSeq       | const               | linear              | const               | linear              | linear              | linear              
@@ -245,6 +248,7 @@ Vector        | const<sup>eff</sup> | const<sup>eff</sup> | const<sup>eff</sup> 
 - linear — 线性时间
 
 Set和Map的接口及实现如图：
+
 ![set&map结构](https://github.com/sumuzhou/vavr-notes/blob/master/4-collection/collections-set-map.png "set&map结构")
 
 Set和Map原理上并没有真正的区别，无非Set目标是值，Map目标是键值对。Vavr的HashMap实现基于[Hash Array Mapped Trie (HAMT)](http://lampwww.epfl.ch/papers/idealhashtrees.pdf)。Map并没有使用特殊的Entry类，而是直接用了Tuple2，极大方便数据结构之间交互：
@@ -257,8 +261,8 @@ List.of('a', 'b', 'c').zipWithIndex();
 ```
 Set和Map各实现类的时间复杂度如下：
 
-|               contains/Key        | add/put             | remove              | min         
-------------- | ------------------- | ------------------- | ------------------- | -------------------
+|             | contains/Key        | add/put             | remove              | min                 
+------------- | ------------------- | ------------------- | ------------------- | ------------------- 
 HashMap       | const<sup>eff</sup> | const<sup>eff</sup> | const<sup>eff</sup> | linear              
 HashSet       | const<sup>eff</sup> | const<sup>eff</sup> | const<sup>eff</sup> | linear              
 LinkedHashMap | const<sup>eff</sup> | linear              | linear              | linear              
